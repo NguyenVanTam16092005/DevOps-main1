@@ -188,16 +188,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          az containerapp secret set \
-            --name "$BACKEND_CONTAINER_APP" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --secrets "mongo-url=$MONGO_URL" \
-            --output none
           az containerapp update \
             --name "$BACKEND_CONTAINER_APP" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --image "${{ steps.azure-resources.outputs.image_prefix }}-backend:${{ github.sha }}" \
             --set-env-vars PORT=8070 MONGO_URL=secretref:mongo-url \
+            --output none
+          az containerapp secret set \
+            --name "$BACKEND_CONTAINER_APP" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --secrets "mongo-url=$MONGO_URL" \
+            --output none
+          BACKEND_REVISION="$(az containerapp show \
+            --name "$BACKEND_CONTAINER_APP" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "properties.latestRevisionName" \
+            --output tsv)"
+          [[ -n "$BACKEND_REVISION" && "$BACKEND_REVISION" != "None" ]] || {
+            echo "::error::Could not resolve the latest backend revision to restart."
+            exit 1
+          }
+          az containerapp revision restart \
+            --name "$BACKEND_CONTAINER_APP" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --revision "$BACKEND_REVISION" \
             --output none
 
       - name: Deploy frontend Container App
