@@ -18,7 +18,7 @@ Dự án được xây dựng với quy trình tự động hóa hoàn chỉnh:
 - **Tự động kiểm thử:** Unit Test & Integration Test cho Backend với Jest & Supertest.
 - **Kiểm soát chất lượng:** Quét và phân tích mã nguồn với SonarQube (SonarCloud).
 - **Containerization:** Đóng gói ứng dụng tối ưu bằng Docker (Multi-stage build).
-- **Triển khai tự động:** GitHub Actions dùng Azure OIDC để đẩy image lên Azure Container Registry (ACR) và cập nhật Azure Container Apps (ACA); `develop` là staging, `main` là production.
+- **Triển khai tự động:** GitHub Actions đẩy image public lên GitHub Container Registry (GHCR) và dùng Azure OIDC cập nhật Azure Container Apps (ACA); `develop` là staging, `main` là production.
 
 ## 🛠️ Công nghệ sử dụng (Technologies)
 ### Frontend
@@ -36,7 +36,7 @@ Dự án được xây dựng với quy trình tự động hóa hoàn chỉnh:
 - **Git & GitHub Actions**
 - **Docker & Docker Compose**
 - **SonarQube**
-- **Azure Container Registry & Azure Container Apps**
+- **GitHub Container Registry & Azure Container Apps**
 - **GitHub Actions OIDC**
 
 ## ⚙️ Cài đặt & Khởi chạy cục bộ (Setup & Run Locally)
@@ -77,11 +77,10 @@ Workflow `.github/workflows/devops-pipeline.yml` giữ các gate kiểm thử ba
 
 Workflow **không tạo Azure resources**. Trước khi bật CI/CD, hãy tạo sẵn trong mỗi môi trường:
 
-1. Một Azure Container Registry (SKU phù hợp với nhu cầu).
-2. Hai Azure Container Apps hiện hữu trong Container Apps Environment: một cho backend, một cho frontend. Bật ingress external; backend target port `8070`, frontend target port `8080`. Backend `/` trả trạng thái JSON và được workflow dùng để kiểm tra sau triển khai.
-3. Cấu hình mỗi Container App để pull từ ACR bằng managed identity (system-assigned hoặc user-assigned) và cấp identity đó quyền `AcrPull` trên registry. Không bật ACR admin user chỉ để thay thế identity.
-4. Cấp danh tính triển khai GitHub quyền cập nhật Container Apps trong resource group và quyền `AcrPush` trên ACR. Dùng quyền tối thiểu phù hợp chính sách Azure của bạn; ví dụ `Azure Container Apps Contributor` ở resource group và `AcrPush` trên registry, cộng quyền đọc resource nếu cấu hình subscription yêu cầu.
-5. Cấu hình MongoDB Atlas để chấp nhận kết nối mạng outbound của Container Apps hoặc thiết lập private networking phù hợp. Workflow cài connection URI vào Container App như secret `mongo-url`, rồi tham chiếu nó bằng biến runtime `MONGO_URL`; không lưu URI trong repository.
+1. Hai Azure Container Apps hiện hữu trong Container Apps Environment: một cho backend, một cho frontend. Bật ingress external; backend target port `8070`, frontend target port `8080`. Backend `/` trả trạng thái JSON và được workflow dùng để kiểm tra sau triển khai.
+2. Workflow publish các image lên GHCR. GitHub thường tạo package mới ở chế độ private, nên lần chạy đầu có thể build/push thành công nhưng deploy Azure thất bại khi Container Apps pull image. Sau khi hai package xuất hiện trong GitHub **Profile → Packages**, mở từng package → **Package settings → Change visibility → Public**, rồi chạy lại workflow. Azure Container Apps cần package public để pull mà không cần registry credentials. Chỉ dùng cách này nếu chấp nhận image ứng dụng được tải công khai.
+3. Cấp danh tính triển khai GitHub quyền cập nhật Container Apps trong resource group. Dùng quyền tối thiểu phù hợp chính sách Azure của bạn; ví dụ `Azure Container Apps Contributor` ở resource group, cộng quyền đọc resource nếu cấu hình subscription yêu cầu. Workflow không còn cần quyền `AcrPush` hoặc cấu hình ACR.
+4. Cấu hình MongoDB Atlas để chấp nhận kết nối mạng outbound của Container Apps hoặc thiết lập private networking phù hợp. Workflow cài connection URI vào Container App như secret `mongo-url`, rồi tham chiếu nó bằng biến runtime `MONGO_URL`; không lưu URI trong repository.
 
 > Backend chỉ ghi thông báo kết nối MongoDB thành công và đã redact URI khỏi thông báo lỗi. URI được truyền vào Container App qua secret runtime `MONGO_URL`, không được ghi vào repository hoặc log.
 >
@@ -106,8 +105,7 @@ Tạo GitHub Environments tên chính xác `staging` và `production`. Thêm cá
 | `AZURE_TENANT_ID` | Secret | Tenant ID của Entra |
 | `AZURE_SUBSCRIPTION_ID` | Secret | Subscription ID chứa resources |
 | `MONGO_URL` | Secret | MongoDB Atlas connection URI đầy đủ; chỉ lưu trong GitHub/Azure secret stores |
-| `AZURE_RESOURCE_GROUP` | Variable | Resource group có Container Apps và ACR |
-| `ACR_NAME` | Variable | Tên resource của registry, không phải login server |
+| `AZURE_RESOURCE_GROUP` | Variable | Resource group chứa Container Apps |
 | `BACKEND_CONTAINER_APP` | Variable | Tên Container App backend |
 | `FRONTEND_CONTAINER_APP` | Variable | Tên Container App frontend |
 
@@ -117,5 +115,5 @@ Tạo GitHub Environments tên chính xác `staging` và `production`. Thêm cá
 
 - Backend chạy trên `PORT=8070`, kết nối Atlas qua secret runtime `MONGO_URL`.
 - Frontend được build trong Docker với `VITE_API_URL=https://<backend-app-fqdn>/api`. Đây là URL public của API, không phải secret. Cập nhật app backend hiện có sẽ giữ hostname; nếu thay app hoặc hostname thì frontend image lấy hostname hiện tại ở mỗi lần chạy workflow.
-- GitHub Actions trước tiên chạy Jest backend và production build frontend. Sau đó mới đăng nhập Azure, kiểm tra ACR/Container Apps và ingress ports, build/push hai image lên ACR, cập nhật apps, rồi kiểm tra HTTP endpoint. Có thể kiểm tra run summary và log job trong GitHub Actions.
+- GitHub Actions trước tiên chạy Jest backend và production build frontend. Sau đó đăng nhập Azure, kiểm tra Container Apps và ingress ports, build/push hai image lên GHCR, cập nhật apps, rồi kiểm tra HTTP endpoint. Có thể kiểm tra run summary và log job trong GitHub Actions.
 - Nếu Azure chưa được chuẩn bị, hãy tạo/cấu hình resources và GitHub Environments trước khi push lên nhánh deploy. Không commit URI Atlas, token, hay client secrets vào `.env`, workflow hoặc README.

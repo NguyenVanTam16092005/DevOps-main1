@@ -93,9 +93,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      packages: write
     env:
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-      ACR_NAME: ${{ vars.ACR_NAME }}
       BACKEND_CONTAINER_APP: ${{ vars.BACKEND_CONTAINER_APP }}
       FRONTEND_CONTAINER_APP: ${{ vars.FRONTEND_CONTAINER_APP }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -110,7 +110,7 @@ jobs:
         shell: bash
         run: |
           missing=()
-          for name in AZURE_RESOURCE_GROUP ACR_NAME BACKEND_CONTAINER_APP FRONTEND_CONTAINER_APP \
+          for name in AZURE_RESOURCE_GROUP BACKEND_CONTAINER_APP FRONTEND_CONTAINER_APP \
             AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID MONGO_URL; do
             if [[ -z "${!name}" ]]; then
               missing+=("$name")
@@ -133,7 +133,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ACR_LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query loginServer --output tsv)"
           BACKEND_FQDN="$(az containerapp show --name "$BACKEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.fqdn --output tsv)"
           FRONTEND_FQDN="$(az containerapp show --name "$FRONTEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.fqdn --output tsv)"
           BACKEND_EXTERNAL="$(az containerapp show --name "$BACKEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.external --output tsv)"
@@ -141,18 +140,22 @@ jobs:
           BACKEND_PORT="$(az containerapp show --name "$BACKEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.targetPort --output tsv)"
           FRONTEND_PORT="$(az containerapp show --name "$FRONTEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.targetPort --output tsv)"
 
-          [[ -n "$ACR_LOGIN_SERVER" ]] || { echo "::error::Could not resolve ACR login server."; exit 1; }
           [[ -n "$BACKEND_FQDN" && "$BACKEND_FQDN" != "None" ]] || { echo "::error::Backend Container App must exist and have ingress enabled."; exit 1; }
           [[ -n "$FRONTEND_FQDN" && "$FRONTEND_FQDN" != "None" ]] || { echo "::error::Frontend Container App must exist and have ingress enabled."; exit 1; }
           [[ "$BACKEND_EXTERNAL" == "true" && "$BACKEND_PORT" == "8070" ]] || { echo "::error::Backend ingress must be external and target port 8070."; exit 1; }
           [[ "$FRONTEND_EXTERNAL" == "true" && "$FRONTEND_PORT" == "8080" ]] || { echo "::error::Frontend ingress must be external and target port 8080."; exit 1; }
 
-          echo "login_server=$ACR_LOGIN_SERVER" >> "$GITHUB_OUTPUT"
+          IMAGE_PREFIX="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          echo "image_prefix=ghcr.io/$IMAGE_PREFIX" >> "$GITHUB_OUTPUT"
           echo "backend_fqdn=$BACKEND_FQDN" >> "$GITHUB_OUTPUT"
           echo "frontend_fqdn=$FRONTEND_FQDN" >> "$GITHUB_OUTPUT"
 
-      - name: Login to Azure Container Registry
-        run: az acr login --name "$ACR_NAME"
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -162,7 +165,9 @@ jobs:
         with:
           context: ./Backend
           push: true
-          tags: ${{ steps.azure-resources.outputs.login_server }}/student-management-backend:${{ github.sha }}
+          tags: ${{ steps.azure-resources.outputs.image_prefix }}-backend:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
@@ -173,7 +178,9 @@ jobs:
           push: true
           build-args: |
             VITE_API_URL=https://${{ steps.azure-resources.outputs.backend_fqdn }}/api
-          tags: ${{ steps.azure-resources.outputs.login_server }}/student-management-frontend:${{ github.sha }}
+          tags: ${{ steps.azure-resources.outputs.image_prefix }}-frontend:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
@@ -189,7 +196,7 @@ jobs:
           az containerapp update \
             --name "$BACKEND_CONTAINER_APP" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --image "${{ steps.azure-resources.outputs.login_server }}/student-management-backend:${{ github.sha }}" \
+            --image "${{ steps.azure-resources.outputs.image_prefix }}-backend:${{ github.sha }}" \
             --set-env-vars PORT=8070 MONGO_URL=secretref:mongo-url \
             --output none
 
@@ -198,7 +205,7 @@ jobs:
           az containerapp update \
             --name "$FRONTEND_CONTAINER_APP" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --image "${{ steps.azure-resources.outputs.login_server }}/student-management-frontend:${{ github.sha }}" \
+            --image "${{ steps.azure-resources.outputs.image_prefix }}-frontend:${{ github.sha }}" \
             --output none
 
       - name: Verify deployed endpoints
