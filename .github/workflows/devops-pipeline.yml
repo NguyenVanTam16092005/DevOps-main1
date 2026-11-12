@@ -199,19 +199,13 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --secrets "mongo-url=$MONGO_URL" \
             --output none
-          BACKEND_REVISION="$(az containerapp show \
+          az containerapp stop \
             --name "$BACKEND_CONTAINER_APP" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --query "properties.latestRevisionName" \
-            --output tsv)"
-          [[ -n "$BACKEND_REVISION" && "$BACKEND_REVISION" != "None" ]] || {
-            echo "::error::Could not resolve the latest backend revision to restart."
-            exit 1
-          }
-          az containerapp revision restart \
+            --output none
+          az containerapp start \
             --name "$BACKEND_CONTAINER_APP" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --revision "$BACKEND_REVISION" \
             --output none
 
       - name: Deploy frontend Container App

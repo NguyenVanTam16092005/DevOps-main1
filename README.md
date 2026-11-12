@@ -116,4 +116,5 @@ Tạo GitHub Environments tên chính xác `staging` và `production`. Thêm cá
 - Backend chạy trên `PORT=8070`, kết nối Atlas qua secret runtime `MONGO_URL`.
 - Frontend được build trong Docker với `VITE_API_URL=https://<backend-app-fqdn>/api`. Đây là URL public của API, không phải secret. Cập nhật app backend hiện có sẽ giữ hostname; nếu thay app hoặc hostname thì frontend image lấy hostname hiện tại ở mỗi lần chạy workflow.
 - GitHub Actions trước tiên chạy Jest backend và production build frontend. Sau đó đăng nhập Azure, kiểm tra Container Apps và ingress ports, build/push hai image lên GHCR, cập nhật apps, rồi kiểm tra HTTP endpoint. Có thể kiểm tra run summary và log job trong GitHub Actions.
+- Với Container Apps Environment loại Express, workflow dùng thao tác stop/start app backend sau khi cập nhật secret vì Express không hỗ trợ restart revision; backend có thể gián đoạn ngắn trong lúc triển khai.
 - Nếu Azure chưa được chuẩn bị, hãy tạo/cấu hình resources và GitHub Environments trước khi push lên nhánh deploy. Không commit URI Atlas, token, hay client secrets vào `.env`, workflow hoặc README.
