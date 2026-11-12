@@ -1,0 +1,129 @@
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: quanlysinhvien_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: quanlysinhvien
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    networks:
+      - mern-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/quanlysinhvien
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: quanlysinhvien_backend
+    restart: unless-stopped
+    ports:
+      - "8070:8070"
+    environment:
+      NODE_ENV: development
+      PORT: 8070
+      MONGO_URL: mongodb://mongodb:27017/quanlysinhvien
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./Backend:/app
+      - /app/node_modules
+    networks:
+      - mern-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "node -e \"require('http').get('http://localhost:8070', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)}).on('error', (e) => {throw e})\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Frontend Web
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: quanlysinhvien_frontend
+    restart: unless-stopped
+    ports:
+      - "80:8080"
+    depends_on:
+      - backend
+    networks:
+      - mern-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: quanlysinhvien_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - mern-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      - backend
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: quanlysinhvien_grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      - mern-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      - prometheus
+
+volumes:
+  mongo_data:
+    driver: local
+  mongo_config:
+    driver: local
+
+networks:
+  mern-network:
+    driver: bridge

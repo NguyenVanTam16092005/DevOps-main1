@@ -1,0 +1,218 @@
+name: MERN CI/CD - Azure Container Apps
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-analyze-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - name: Install Backend Dependencies
+        working-directory: Backend
+        run: npm ci --ignore-scripts
+
+      - name: Run Backend Unit & Integration Tests (Jest)
+        working-directory: Backend
+        run: npm test -- --coverage --coverageReporters=lcov --coverageReporters=text
+
+      - name: Upload Coverage to SonarCloud
+        uses: SonarSource/sonarcloud-github-action@5bd1db64534962caf02c4e376fd959a46afd86d9 # v2.1.1
+        with:
+          projectBaseDir: Backend/
+          args: >
+            -Dsonar.projectKey=QuanLySinhVien:Backend
+            -Dsonar.organization=quanlysinhvien
+            -Dsonar.sources=src
+            -Dsonar.tests=tests
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        continue-on-error: true
+
+      - name: Generate Test Report
+        if: always()
+        working-directory: Backend
+        run: |
+          echo "## Backend Test Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "Backend tests completed at $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "Coverage report generated" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: Frontend
+        run: npm ci --ignore-scripts
+
+      - name: Build Frontend Application
+        working-directory: Frontend
+        run: npm run build
+
+      - name: Generate Build Report
+        if: always()
+        run: |
+          echo "## Frontend Build Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "Frontend build completed at $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-azure-container-apps:
+    needs: [test-and-analyze-backend, build-frontend]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      ACR_NAME: ${{ vars.ACR_NAME }}
+      BACKEND_CONTAINER_APP: ${{ vars.BACKEND_CONTAINER_APP }}
+      FRONTEND_CONTAINER_APP: ${{ vars.FRONTEND_CONTAINER_APP }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      MONGO_URL: ${{ secrets.MONGO_URL }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate required Azure configuration
+        shell: bash
+        run: |
+          missing=()
+          for name in AZURE_RESOURCE_GROUP ACR_NAME BACKEND_CONTAINER_APP FRONTEND_CONTAINER_APP \
+            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID MONGO_URL; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing required GitHub Environment variables/secrets: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify existing Azure resources
+        id: azure-resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACR_LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query loginServer --output tsv)"
+          BACKEND_FQDN="$(az containerapp show --name "$BACKEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.fqdn --output tsv)"
+          FRONTEND_FQDN="$(az containerapp show --name "$FRONTEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.fqdn --output tsv)"
+          BACKEND_EXTERNAL="$(az containerapp show --name "$BACKEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.external --output tsv)"
+          FRONTEND_EXTERNAL="$(az containerapp show --name "$FRONTEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.external --output tsv)"
+          BACKEND_PORT="$(az containerapp show --name "$BACKEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.targetPort --output tsv)"
+          FRONTEND_PORT="$(az containerapp show --name "$FRONTEND_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.targetPort --output tsv)"
+
+          [[ -n "$ACR_LOGIN_SERVER" ]] || { echo "::error::Could not resolve ACR login server."; exit 1; }
+          [[ -n "$BACKEND_FQDN" && "$BACKEND_FQDN" != "None" ]] || { echo "::error::Backend Container App must exist and have ingress enabled."; exit 1; }
+          [[ -n "$FRONTEND_FQDN" && "$FRONTEND_FQDN" != "None" ]] || { echo "::error::Frontend Container App must exist and have ingress enabled."; exit 1; }
+          [[ "$BACKEND_EXTERNAL" == "true" && "$BACKEND_PORT" == "8070" ]] || { echo "::error::Backend ingress must be external and target port 8070."; exit 1; }
+          [[ "$FRONTEND_EXTERNAL" == "true" && "$FRONTEND_PORT" == "8080" ]] || { echo "::error::Frontend ingress must be external and target port 8080."; exit 1; }
+
+          echo "login_server=$ACR_LOGIN_SERVER" >> "$GITHUB_OUTPUT"
+          echo "backend_fqdn=$BACKEND_FQDN" >> "$GITHUB_OUTPUT"
+          echo "frontend_fqdn=$FRONTEND_FQDN" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Azure Container Registry
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Backend
+          push: true
+          tags: ${{ steps.azure-resources.outputs.login_server }}/student-management-backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Frontend
+          push: true
+          build-args: |
+            VITE_API_URL=https://${{ steps.azure-resources.outputs.backend_fqdn }}/api
+          tags: ${{ steps.azure-resources.outputs.login_server }}/student-management-frontend:${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Deploy backend Container App
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp secret set \
+            --name "$BACKEND_CONTAINER_APP" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --secrets "mongo-url=$MONGO_URL" \
+            --output none
+          az containerapp update \
+            --name "$BACKEND_CONTAINER_APP" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "${{ steps.azure-resources.outputs.login_server }}/student-management-backend:${{ github.sha }}" \
+            --set-env-vars PORT=8070 MONGO_URL=secretref:mongo-url \
+            --output none
+
+      - name: Deploy frontend Container App
+        run: |
+          az containerapp update \
+            --name "$FRONTEND_CONTAINER_APP" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "${{ steps.azure-resources.outputs.login_server }}/student-management-frontend:${{ github.sha }}" \
+            --output none
+
+      - name: Verify deployed endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 18 --retry-delay 10 --retry-connrefused \
+            "https://${{ steps.azure-resources.outputs.backend_fqdn }}/"
+          curl --fail --silent --show-error --retry 18 --retry-delay 10 --retry-connrefused \
+            "https://${{ steps.azure-resources.outputs.frontend_fqdn }}/" -o /dev/null
+          {
+            echo "## Azure Container Apps deployment"
+            echo "- Environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}"
+            echo "- Backend: https://${{ steps.azure-resources.outputs.backend_fqdn }}"
+            echo "- Frontend: https://${{ steps.azure-resources.outputs.frontend_fqdn }}"
+            echo "- Images tagged with commit \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
