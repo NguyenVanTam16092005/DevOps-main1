@@ -188,24 +188,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          az containerapp update \
-            --name "$BACKEND_CONTAINER_APP" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --image "${{ steps.azure-resources.outputs.image_prefix }}-backend:${{ github.sha }}" \
-            --set-env-vars PORT=8070 MONGO_URL=secretref:mongo-url \
-            --output none
           az containerapp secret set \
             --name "$BACKEND_CONTAINER_APP" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --secrets "mongo-url=$MONGO_URL" \
             --output none
-          az containerapp stop \
+          az containerapp update \
             --name "$BACKEND_CONTAINER_APP" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --output none
-          az containerapp start \
-            --name "$BACKEND_CONTAINER_APP" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "${{ steps.azure-resources.outputs.image_prefix }}-backend:${{ github.sha }}" \
+            --set-env-vars PORT=8070 MONGO_URL=secretref:mongo-url \
             --output none
 
       - name: Deploy frontend Container App
