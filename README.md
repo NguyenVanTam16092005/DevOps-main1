@@ -73,7 +73,7 @@ Hệ thống sẽ tự động build image và chạy cả Frontend lẫn Backen
 
 ## ☁️ Triển khai lên Azure Container Apps bằng GitHub Actions
 
-Workflow `.github/workflows/devops-pipeline.yml` giữ các gate kiểm thử backend và build frontend. Chỉ các lần **push** lên `develop` hoặc `main` mới đẩy image và triển khai; Pull Request chỉ chạy kiểm tra. `develop` dùng GitHub Environment `staging`, còn `main` dùng `production`. Mỗi lần triển khai gắn image bằng commit SHA, không dùng tag `latest`.
+Workflow `.github/workflows/devops-pipeline.yml` được tách thành các giai đoạn: **Test backend + build frontend** → **Build Docker images và push lên GHCR** → **Deploy lên Azure Container Apps + kiểm tra endpoint**. Chỉ các lần **push** lên `develop` hoặc `main` mới build/push Docker image và triển khai; Pull Request chỉ chạy kiểm tra mã nguồn. `develop` dùng GitHub Environment `staging`, còn `main` dùng `production`. Mỗi lần triển khai gắn image bằng commit SHA, không dùng tag `latest`.
 
 Workflow **không tạo Azure resources**. Trước khi bật CI/CD, hãy tạo sẵn trong mỗi môi trường:
 
@@ -115,6 +115,6 @@ Tạo GitHub Environments tên chính xác `staging` và `production`. Thêm cá
 
 - Backend chạy trên `PORT=8070`, kết nối Atlas qua secret runtime `MONGO_URL`.
 - Frontend được build trong Docker với `VITE_API_URL=https://<backend-app-fqdn>/api`. Đây là URL public của API, không phải secret. Cập nhật app backend hiện có sẽ giữ hostname; nếu thay app hoặc hostname thì frontend image lấy hostname hiện tại ở mỗi lần chạy workflow.
-- GitHub Actions trước tiên chạy Jest backend và production build frontend. Sau đó đăng nhập Azure, kiểm tra Container Apps và ingress ports, build/push hai image lên GHCR, cập nhật apps, rồi kiểm tra HTTP endpoint. Có thể kiểm tra run summary và log job trong GitHub Actions.
+- GitHub Actions hiển thị riêng job `test-and-analyze-backend`, `build-frontend`, `build-docker-images` và `deploy-azure-container-apps`. Job Docker chỉ chạy sau khi test và frontend build thành công; job deploy chỉ chạy sau khi hai image được push thành công. Có thể kiểm tra run summary và log từng job trong GitHub Actions.
 - Workflow cập nhật secret MongoDB trước khi đổi image backend; việc đổi image tạo revision mới, revision này nhận secret mới mà không cần thao tác restart riêng.
 - Nếu Azure chưa được chuẩn bị, hãy tạo/cấu hình resources và GitHub Environments trước khi push lên nhánh deploy. Không commit URI Atlas, token, hay client secrets vào `.env`, workflow hoặc README.

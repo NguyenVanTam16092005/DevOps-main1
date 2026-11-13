@@ -85,7 +85,8 @@ jobs:
           echo "## Frontend Build Report" >> "$GITHUB_STEP_SUMMARY"
           echo "Frontend build completed at $(date -u)" >> "$GITHUB_STEP_SUMMARY"
 
-  deploy-azure-container-apps:
+  build-docker-images:
+    name: Build Docker images (GHCR)
     needs: [test-and-analyze-backend, build-frontend]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
@@ -101,7 +102,10 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      MONGO_URL: ${{ secrets.MONGO_URL }}
+    outputs:
+      image_prefix: ${{ steps.azure-resources.outputs.image_prefix }}
+      backend_fqdn: ${{ steps.azure-resources.outputs.backend_fqdn }}
+      frontend_fqdn: ${{ steps.azure-resources.outputs.frontend_fqdn }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -111,7 +115,7 @@ jobs:
         run: |
           missing=()
           for name in AZURE_RESOURCE_GROUP BACKEND_CONTAINER_APP FRONTEND_CONTAINER_APP \
-            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID MONGO_URL; do
+            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
             if [[ -z "${!name}" ]]; then
               missing+=("$name")
             fi
@@ -184,6 +188,45 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
+  deploy-azure-container-apps:
+    name: Deploy to Azure Container Apps
+    needs: [build-docker-images]
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      BACKEND_CONTAINER_APP: ${{ vars.BACKEND_CONTAINER_APP }}
+      FRONTEND_CONTAINER_APP: ${{ vars.FRONTEND_CONTAINER_APP }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      MONGO_URL: ${{ secrets.MONGO_URL }}
+    steps:
+      - name: Validate required deployment configuration
+        shell: bash
+        run: |
+          missing=()
+          for name in AZURE_RESOURCE_GROUP BACKEND_CONTAINER_APP FRONTEND_CONTAINER_APP \
+            AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID MONGO_URL; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing required GitHub Environment variables/secrets: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Deploy backend Container App
         shell: bash
         run: |
@@ -196,7 +239,7 @@ jobs:
           az containerapp update \
             --name "$BACKEND_CONTAINER_APP" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --image "${{ steps.azure-resources.outputs.image_prefix }}-backend:${{ github.sha }}" \
+            --image "${{ needs.build-docker-images.outputs.image_prefix }}-backend:${{ github.sha }}" \
             --set-env-vars PORT=8070 MONGO_URL=secretref:mongo-url \
             --output none
 
@@ -205,7 +248,7 @@ jobs:
           az containerapp update \
             --name "$FRONTEND_CONTAINER_APP" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --image "${{ steps.azure-resources.outputs.image_prefix }}-frontend:${{ github.sha }}" \
+            --image "${{ needs.build-docker-images.outputs.image_prefix }}-frontend:${{ github.sha }}" \
             --output none
 
       - name: Verify deployed endpoints
@@ -213,13 +256,13 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --retry 18 --retry-delay 10 --retry-connrefused \
-            "https://${{ steps.azure-resources.outputs.backend_fqdn }}/"
+            "https://${{ needs.build-docker-images.outputs.backend_fqdn }}/"
           curl --fail --silent --show-error --retry 18 --retry-delay 10 --retry-connrefused \
-            "https://${{ steps.azure-resources.outputs.frontend_fqdn }}/" -o /dev/null
+            "https://${{ needs.build-docker-images.outputs.frontend_fqdn }}/" -o /dev/null
           {
             echo "## Azure Container Apps deployment"
             echo "- Environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}"
-            echo "- Backend: https://${{ steps.azure-resources.outputs.backend_fqdn }}"
-            echo "- Frontend: https://${{ steps.azure-resources.outputs.frontend_fqdn }}"
+            echo "- Backend: https://${{ needs.build-docker-images.outputs.backend_fqdn }}"
+            echo "- Frontend: https://${{ needs.build-docker-images.outputs.frontend_fqdn }}"
             echo "- Images tagged with commit \`${{ github.sha }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
