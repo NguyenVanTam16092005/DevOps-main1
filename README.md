@@ -75,6 +75,8 @@ Hệ thống sẽ tự động build image và chạy cả Frontend lẫn Backen
 
 Workflow `.github/workflows/devops-pipeline.yml` được tách thành các giai đoạn: **Test backend + build frontend** → **Build Docker images và push lên GHCR** → **Deploy lên Azure Container Apps + kiểm tra endpoint**. Chỉ các lần **push** lên `develop` hoặc `main` mới build/push Docker image và triển khai; Pull Request chỉ chạy kiểm tra mã nguồn. `develop` dùng GitHub Environment `staging`, còn `main` dùng `production`. Mỗi lần triển khai gắn image bằng commit SHA, không dùng tag `latest`.
 
+Lưu ý: workflow hiện chạy khi có bất kỳ thay đổi nào được push lên `main` hoặc `develop`, kể cả chỉ sửa tài liệu; các push đó cũng kích hoạt deploy môi trường tương ứng.
+
 Workflow **không tạo Azure resources**. Trước khi bật CI/CD, hãy tạo sẵn trong mỗi môi trường:
 
 1. Hai Azure Container Apps hiện hữu trong Container Apps Environment: một cho backend, một cho frontend. Bật ingress external; backend target port `8070`, frontend target port `8080`. Backend `/` trả trạng thái JSON và được workflow dùng để kiểm tra sau triển khai.
