@@ -1,120 +1,150 @@
-<h1 align="center">MERN Student Management System (DevOps Edition)</h1>
-<h5 align="center">Hệ thống Quản lý Sinh viên Fullstack MERN tích hợp CI/CD, Docker & Kiểm thử tự động</h5>
+# Hệ thống Quản lý Sinh viên
 
-<br/>
+Ứng dụng quản lý sinh viên full-stack gồm giao diện React, REST API Express và MongoDB. Repo cũng có Docker Compose để chạy toàn bộ stack cục bộ và GitHub Actions để kiểm thử, build image, triển khai lên Azure Container Apps.
 
-## 📖 Giới thiệu (Overview)
-Đây là dự án Quản lý Sinh viên được xây dựng trên nền tảng **MERN Stack** (MongoDB, Express, React, Node.js). Dự án không chỉ cung cấp các tính năng quản lý học vụ mà còn được tích hợp sâu các quy trình **DevOps** hiện đại bao gồm CI/CD Pipeline, Kiểm thử tự động, Quản lý chất lượng mã nguồn và Triển khai tự động.
+## Lấy mã nguồn
 
-## ✨ Chức năng chính (Key Features)
-Hệ thống được thiết kế với 3 phân quyền người dùng chuyên biệt:
-- **👨‍💼 Admin:** Quản lý toàn bộ hệ thống, quản lý tài khoản, sinh viên/giảng viên, phân công thời khóa biểu.
-- **👩‍🏫 Giảng viên (Teacher):** Xem thời khóa biểu giảng dạy, quản lý điểm số, điểm danh lớp học.
-- **👨‍🎓 Sinh viên (Student):** Xem thời khóa biểu cá nhân, theo dõi bảng điểm, kết quả học tập.
-
-## 🚀 Kiến trúc DevOps (DevOps Architecture)
-Dự án được xây dựng với quy trình tự động hóa hoàn chỉnh:
-- **CI/CD Pipeline:** Vận hành thông qua GitHub Actions.
-- **Tự động kiểm thử:** Unit Test & Integration Test cho Backend với Jest & Supertest.
-- **Kiểm soát chất lượng:** Quét và phân tích mã nguồn với SonarQube (SonarCloud).
-- **Containerization:** Đóng gói ứng dụng tối ưu bằng Docker (Multi-stage build).
-- **Triển khai tự động:** GitHub Actions đẩy image public lên GitHub Container Registry (GHCR) và dùng Azure OIDC cập nhật Azure Container Apps (ACA); `develop` là staging, `main` là production.
-
-## 🛠️ Công nghệ sử dụng (Technologies)
-### Frontend
-- **React.js & Vite** - Xây dựng giao diện UI tốc độ cao
-- **React Router** - Quản lý điều hướng
-- **TailwindCSS / Bootstrap** - Thiết kế giao diện
-- **Axios** - Tương tác API
-
-### Backend & Database
-- **Node.js & Express.js** - Xây dựng RESTful API
-- **MongoDB & Mongoose** - Cơ sở dữ liệu NoSQL
-- **Jest & Supertest** - Framework kiểm thử
-
-### DevOps Tools
-- **Git & GitHub Actions**
-- **Docker & Docker Compose**
-- **SonarQube**
-- **GitHub Container Registry & Azure Container Apps**
-- **GitHub Actions OIDC**
-
-## ⚙️ Cài đặt & Khởi chạy cục bộ (Setup & Run Locally)
-
-**1. Clone dự án:**
 ```bash
-git clone https://github.com/TinsHuynh/DevOps.git
-cd DevOps
+git clone https://github.com/NguyenVanTam16092005/DevOps-main1.git
+cd DevOps-main1
 ```
 
-**2. Khởi chạy Backend:**
-Mở terminal 1:
+## Chức năng hiện có
+
+- Đăng nhập và giao diện theo vai trò quản trị viên, giảng viên, sinh viên.
+- Quản lý tài khoản, sinh viên, giảng viên và danh mục.
+- Xem thông báo và nhật ký hoạt động.
+- API backend cung cấp các nhóm endpoint `/api/auth`, `/api/users`, `/api/students`, `/api/teachers`, `/api/categories`, `/api/notifications` và `/api/logs`.
+- Backend xuất Prometheus metrics tại `/metrics`.
+
+> Một số nội dung trên dashboard giảng viên/sinh viên đang dùng dữ liệu mẫu phía frontend.
+
+## Công nghệ
+
+- **Frontend:** React 18, Vite, React Router, Tailwind CSS, Axios.
+- **Backend:** Node.js 20, Express, Mongoose, MongoDB.
+- **Kiểm thử:** Jest và Supertest cho backend; Vitest cho frontend.
+- **DevOps:** Docker, Docker Compose, GitHub Actions, SonarCloud, GHCR, Azure Container Apps, Prometheus và Grafana.
+
+## Chạy cục bộ
+
+### Yêu cầu
+
+- Node.js 20 trở lên và npm.
+- MongoDB chạy cục bộ hoặc một MongoDB connection URI.
+
+### Backend
+
+Từ thư mục gốc, tạo `Backend/.env`:
+
+```env
+PORT=8070
+MONGO_URL=mongodb://127.0.0.1:27017/quanlysinhvien
+```
+
+Sau đó chạy:
+
 ```bash
 cd Backend
-npm install
-#Tạo file .env và cấu hình: PORT=8071, MONGO_URL=<your_mongodb_uri>, DNS_SERVERS=1.1.1.1,8.8.8.8.
+npm ci
 npm run dev
 ```
 
-**3. Khởi chạy Frontend:**
-Mở terminal 2:
+API mặc định chạy tại `http://localhost:8070`. Có thể cấu hình `MONGODB_URL` thay cho `MONGO_URL`; `DNS_SERVERS` là tùy chọn.
+
+### Frontend
+
+Mở terminal khác:
+
 ```bash
 cd Frontend
-npm install
+npm ci
 npm start
 ```
 
-## 🐳 Khởi chạy bằng Docker Compose
-Nếu máy bạn đã cài sẵn Docker, chỉ cần chạy một lệnh duy nhất ở thư mục gốc:
-```bash
-docker-compose up -d --build
+Vite chạy tại `http://localhost:3000`. Mặc định frontend gọi API ở `http://localhost:8070/api`. Nếu backend chạy ở địa chỉ khác, tạo `Frontend/.env.local` và đặt:
+
+```env
+VITE_API_URL=http://localhost:8070/api
 ```
-Hệ thống sẽ tự động build image và chạy cả Frontend lẫn Backend trong các container.
 
-## ☁️ Triển khai lên Azure Container Apps bằng GitHub Actions
+## Chạy bằng Docker Compose
 
-Workflow `.github/workflows/devops-pipeline.yml` được tách thành các giai đoạn: **Test backend + build frontend** → **Build Docker images và push lên GHCR** → **Deploy lên Azure Container Apps + kiểm tra endpoint**. Chỉ các lần **push** lên `develop` hoặc `main` mới build/push Docker image và triển khai; Pull Request chỉ chạy kiểm tra mã nguồn. `develop` dùng GitHub Environment `staging`, còn `main` dùng `production`. Mỗi lần triển khai gắn image bằng commit SHA, không dùng tag `latest`.
+Từ thư mục gốc:
 
-Workflow **không tạo Azure resources**. Trước khi bật CI/CD, hãy tạo sẵn trong mỗi môi trường:
+```bash
+docker compose up --build
+```
 
-1. Hai Azure Container Apps hiện hữu trong Container Apps Environment: một cho backend, một cho frontend. Bật ingress external; backend target port `8070`, frontend target port `8080`. Backend `/` trả trạng thái JSON và được workflow dùng để kiểm tra sau triển khai.
-2. Workflow publish các image lên GHCR. GitHub thường tạo package mới ở chế độ private, nên lần chạy đầu có thể build/push thành công nhưng deploy Azure thất bại khi Container Apps pull image. Sau khi hai package xuất hiện trong GitHub **Profile → Packages**, mở từng package → **Package settings → Change visibility → Public**, rồi chạy lại workflow. Azure Container Apps cần package public để pull mà không cần registry credentials. Chỉ dùng cách này nếu chấp nhận image ứng dụng được tải công khai.
-3. Cấp danh tính triển khai GitHub quyền cập nhật Container Apps trong resource group. Dùng quyền tối thiểu phù hợp chính sách Azure của bạn; ví dụ `Azure Container Apps Contributor` ở resource group, cộng quyền đọc resource nếu cấu hình subscription yêu cầu. Workflow không còn cần quyền `AcrPush` hoặc cấu hình ACR.
-4. Cấu hình MongoDB Atlas để chấp nhận kết nối mạng outbound của Container Apps hoặc thiết lập private networking phù hợp. Workflow cài connection URI vào Container App như secret `mongo-url`, rồi tham chiếu nó bằng biến runtime `MONGO_URL`; không lưu URI trong repository.
+Compose khởi chạy MongoDB, backend, frontend, Prometheus và Grafana. Các địa chỉ mặc định:
 
-> Backend chỉ ghi thông báo kết nối MongoDB thành công và đã redact URI khỏi thông báo lỗi. URI được truyền vào Container App qua secret runtime `MONGO_URL`, không được ghi vào repository hoặc log.
->
-> Các file `.env` được ignore cho các thay đổi sau này. Nếu `Backend/.env` từng được commit, cần bỏ nó khỏi Git tracking/history và rotate các credential bên trong; việc thêm ignore không xóa dữ liệu đã commit.
+| Dịch vụ | Địa chỉ |
+| --- | --- |
+| Frontend | `http://localhost` |
+| Backend API | `http://localhost:8070` |
+| Prometheus | `http://localhost:9090` |
+| Grafana | `http://localhost:3001` |
+| MongoDB | `localhost:27017` |
 
-### Thiết lập GitHub OIDC và Environments
+Compose thiết lập MongoDB và `MONGO_URL` cho backend, không cần tạo file `.env` để dùng cấu hình mặc định này. Grafana trong cấu hình Compose hiện dùng mật khẩu mẫu `admin`; chỉ dùng trong môi trường local và đổi mật khẩu trước khi mở dịch vụ ra bên ngoài. Để dừng các container, chạy `docker compose down`; dữ liệu MongoDB được giữ trong Docker volume.
 
-Trong Azure, tạo/cấu hình ứng dụng Microsoft Entra (service principal) cho federated credentials của GitHub Actions. Dùng issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`, và subject theo repo/Environment, ví dụ:
+## Kiểm thử và build
+
+```bash
+# Backend tests
+cd Backend
+npm test
+
+# Frontend tests chạy một lượt
+cd ../Frontend
+npm test -- --run
+npm run build
+```
+
+## CI/CD và triển khai Azure
+
+Workflow [`.github/workflows/devops-pipeline.yml`](.github/workflows/devops-pipeline.yml) chạy kiểm thử backend và build frontend trên pull request hoặc push lên `main`/`develop`. Chỉ push lên hai nhánh đó mới build/push Docker images lên GHCR và triển khai Azure Container Apps:
+
+- `develop` dùng GitHub Environment `staging`.
+- `main` dùng GitHub Environment `production`.
+- Image được gắn tag commit SHA; workflow kiểm tra endpoint sau khi triển khai.
+- SonarCloud được gọi trong job kiểm thử backend, nhưng lỗi bước phân tích không làm job thất bại.
+
+Workflow cập nhật **các Azure Container Apps đã được tạo sẵn**, không tự tạo tài nguyên Azure. Trước khi triển khai, tạo hai Container Apps có ingress external trong mỗi môi trường:
+
+- Backend: target port `8070`.
+- Frontend: target port `8080`.
+
+Thiết lập các GitHub Environments `staging` và `production` với giá trị phù hợp cho từng môi trường:
+
+| Tên | Loại | Mục đích |
+| --- | --- | --- |
+| `AZURE_CLIENT_ID` | Secret | Microsoft Entra application client ID dùng với OIDC |
+| `AZURE_TENANT_ID` | Secret | Entra tenant ID |
+| `AZURE_SUBSCRIPTION_ID` | Secret | Azure subscription chứa Container Apps |
+| `MONGO_URL` | Secret | MongoDB connection URI |
+| `AZURE_RESOURCE_GROUP` | Variable | Resource group |
+| `BACKEND_CONTAINER_APP` | Variable | Tên Container App backend |
+| `FRONTEND_CONTAINER_APP` | Variable | Tên Container App frontend |
+
+Cấu hình federated credential của Entra cho GitHub OIDC, issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`, và subject theo repo/environment, ví dụ:
 
 ```text
 repo:<OWNER>/<REPO>:environment:staging
 repo:<OWNER>/<REPO>:environment:production
 ```
 
-Thay `<OWNER>/<REPO>` bằng tên repo thực tế. Không cần client secret/password Azure trong GitHub; workflow dùng `azure/login@v2` với OIDC.
+Danh tính này cần quyền cập nhật Container Apps trong resource group. Workflow không cấu hình registry credentials cho Azure Container Apps; các package GHCR cần public để Azure pull image theo cấu hình hiện tại. Chỉ đặt public nếu chấp nhận image có thể được tải công khai.
 
-Tạo GitHub Environments tên chính xác `staging` và `production`. Thêm các mục dưới đây vào **cả hai** Environments (giá trị resource có thể khác nhau giữa staging và production):
+Frontend image được build với `VITE_API_URL=https://<backend-app-fqdn>/api`. Nếu thay backend Container App hoặc hostname, workflow sẽ dùng hostname mới khi build frontend. Không commit connection URI, token hoặc secret vào repository.
 
-| Tên | Loại | Giá trị |
-| --- | --- | --- |
-| `AZURE_CLIENT_ID` | Secret | Client ID của ứng dụng Entra đã cấu hình federated OIDC |
-| `AZURE_TENANT_ID` | Secret | Tenant ID của Entra |
-| `AZURE_SUBSCRIPTION_ID` | Secret | Subscription ID chứa resources |
-| `MONGO_URL` | Secret | MongoDB Atlas connection URI đầy đủ; chỉ lưu trong GitHub/Azure secret stores |
-| `AZURE_RESOURCE_GROUP` | Variable | Resource group chứa Container Apps |
-| `BACKEND_CONTAINER_APP` | Variable | Tên Container App backend |
-| `FRONTEND_CONTAINER_APP` | Variable | Tên Container App frontend |
+### Khắc phục lỗi HTTP 503 sau khi deploy
 
-Đảm bảo tên/giá trị đúng cho từng environment và OIDC federated credential cho đúng `staging`/`production`. Thiếu biến, secret, resource, ingress hay quyền Azure sẽ làm job thất bại; workflow không báo deploy thành công khi thiếu cấu hình.
+Nếu job `Verify deployed endpoints` liên tục nhận HTTP 503, Azure Container Apps chưa có replica sẵn sàng phục vụ request. Workflow kiểm tra backend trước frontend, nên xem log của Container App backend trước:
 
-### Ports, API URL và kiểm tra
+1. Trong Azure Portal, mở backend Container App và kiểm tra revision mới nhất có trạng thái **Healthy** và có replica đang chạy.
+2. Xem **Log stream** hoặc **Logs** để tìm lỗi khởi động, lỗi pull image hoặc không kết nối được MongoDB.
+3. Xác nhận ingress đang bật external, target port là `8070`, và `MONGO_URL` đang tham chiếu đúng secret `mongo-url`.
+4. Sau khi xử lý nguyên nhân, chạy lại workflow trên nhánh deploy tương ứng.
 
-- Backend chạy trên `PORT=8070`, kết nối Atlas qua secret runtime `MONGO_URL`.
-- Frontend được build trong Docker với `VITE_API_URL=https://<backend-app-fqdn>/api`. Đây là URL public của API, không phải secret. Cập nhật app backend hiện có sẽ giữ hostname; nếu thay app hoặc hostname thì frontend image lấy hostname hiện tại ở mỗi lần chạy workflow.
-- GitHub Actions hiển thị riêng job `test-and-analyze-backend`, `build-frontend`, `build-docker-images` và `deploy-azure-container-apps`. Job Docker chỉ chạy sau khi test và frontend build thành công; job deploy chỉ chạy sau khi hai image được push thành công. Có thể kiểm tra run summary và log từng job trong GitHub Actions.
-- Workflow cập nhật secret MongoDB trước khi đổi image backend; việc đổi image tạo revision mới, revision này nhận secret mới mà không cần thao tác restart riêng.
-- Nếu Azure chưa được chuẩn bị, hãy tạo/cấu hình resources và GitHub Environments trước khi push lên nhánh deploy. Không commit URI Atlas, token, hay client secrets vào `.env`, workflow hoặc README.
+Không nên bỏ bước kiểm tra endpoint để che lỗi: job chỉ thành công khi ứng dụng thực sự trả phản hồi thành công.
