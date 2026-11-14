@@ -137,3 +137,14 @@ repo:<OWNER>/<REPO>:environment:production
 Danh tính này cần quyền cập nhật Container Apps trong resource group. Workflow không cấu hình registry credentials cho Azure Container Apps; các package GHCR cần public để Azure pull image theo cấu hình hiện tại. Chỉ đặt public nếu chấp nhận image có thể được tải công khai.
 
 Frontend image được build với `VITE_API_URL=https://<backend-app-fqdn>/api`. Nếu thay backend Container App hoặc hostname, workflow sẽ dùng hostname mới khi build frontend. Không commit connection URI, token hoặc secret vào repository.
+
+### Khắc phục lỗi HTTP 503 sau khi deploy
+
+Nếu job `Verify deployed endpoints` liên tục nhận HTTP 503, Azure Container Apps chưa có replica sẵn sàng phục vụ request. Workflow kiểm tra backend trước frontend, nên xem log của Container App backend trước:
+
+1. Trong Azure Portal, mở backend Container App và kiểm tra revision mới nhất có trạng thái **Healthy** và có replica đang chạy.
+2. Xem **Log stream** hoặc **Logs** để tìm lỗi khởi động, lỗi pull image hoặc không kết nối được MongoDB.
+3. Xác nhận ingress đang bật external, target port là `8070`, và `MONGO_URL` đang tham chiếu đúng secret `mongo-url`.
+4. Sau khi xử lý nguyên nhân, chạy lại workflow trên nhánh deploy tương ứng.
+
+Không nên bỏ bước kiểm tra endpoint để che lỗi: job chỉ thành công khi ứng dụng thực sự trả phản hồi thành công.
